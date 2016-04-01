@@ -1,0 +1,41 @@
+#!/usr/bin/ruby
+
+ZIPURL = "https://sharelatex.irisa.fr/project/aaaaaaaaaaaaaafd5c44ddc1/download/zip"
+SHARELATEX_LOGIN = 'mylogin'
+SHARELATEX_PASSWORD = 'password'
+GITDIR = "/home/lucas/myproject/"
+
+require 'mechanize'
+require 'openssl'
+require 'fileutils'
+require 'json'
+
+I_KNOW_THAT_OPENSSL_VERIFY_PEER_EQUALS_VERIFY_NONE_IS_WRONG = nil
+old_verbose, $VERBOSE = $VERBOSE, nil
+OpenSSL::SSL::VERIFY_PEER = OpenSSL::SSL::VERIFY_NONE
+$VERBOSE = old_verbose
+
+$agent = Mechanize.new
+$agent.user_agent_alias = "Windows IE 8"
+$agent.history.max_size=5
+
+page = $agent.get(ZIPURL)
+
+form = page.form('loginForm')
+form.field_with(:name => 'email').value = SHARELATEX_LOGIN 
+form.field_with(:name => 'password').value = SHARELATEX_PASSWORD
+p2 = $agent.submit(form)
+red = JSON::parse(p2.body)['redir']
+r =  $agent.get(red)
+td = `mktemp`.chomp
+File::open(td, 'w') { |fd| fd.print r.body }
+Dir::chdir(GITDIR)
+(Dir::entries('.') - ['.', '..', '.git' ]).each do |e|
+  system("git rm -rf \"#{e}\" >/dev/null") or raise
+end
+system("unzip #{td} > /dev/null") or raise
+system("git add *") or raise
+if `git status` =~  /nothing to commit, working directory clean/
+  exit(0)
+end
+system("git commit -m 'Synced at #{Time::now.to_s}' >/dev/null") or raise
